@@ -57,13 +57,6 @@ __C infiniStatus_t infiniopCreateSwiGLUDescriptor(
 #ifdef ENABLE_ASCEND_API
         CREATE(INFINI_DEVICE_ASCEND, ascend);
 #endif
-#ifdef ENABLE_METAX_GPU
-    case DevMetaxGpu: {
-        return macaCreateSwiGLUDescriptor((MacaHandle_t)handle,
-                                          (SwiGLUMacaDescriptor_t *)desc_ptr,
-                                          c_desc, a_desc, b_desc);
-    }
-#endif
 #ifdef ENABLE_MTHREADS_GPU
     case DevMthreadsGpu:
         return musaCreateSwiGLUDescriptor(
@@ -102,11 +95,6 @@ __C infiniStatus_t infiniopGetSwiGLUWorkspaceSize(infiniopSwiGLUDescriptor_t des
 #endif
 #ifdef ENABLE_ASCEND_API
         GET(INFINI_DEVICE_ASCEND, ascend)
-#endif
-#ifdef ENABLE_METAX_GPU
-    case DevMetaxGpu: {
-        return macaGetSwiGLUWorkspaceSize((SwiGLUMacaDescriptor_t)desc, size);
-    }
 #endif
 #ifdef ENABLE_MTHREADS_GPU
     case DevMthreadsGpu: {
@@ -154,10 +142,6 @@ __C infiniStatus_t infiniopSwiGLU(
 #ifdef ENABLE_ASCEND_API
         CALCULATE(INFINI_DEVICE_ASCEND, ascend);
 #endif
-#ifdef ENABLE_METAX_GPU
-    case DevMetaxGpu:
-        return macaSwiGLU((SwiGLUMacaDescriptor_t)desc, c, a, b, stream);
-#endif
 #ifdef ENABLE_MTHREADS_GPU
     case DevMthreadsGpu:
         return musaSwiGLU((SwiGLUMusaDescriptor_t)desc, c, a, b, stream);
@@ -197,10 +181,6 @@ infiniopDestroySwiGLUDescriptor(infiniopSwiGLUDescriptor_t desc) {
 #endif
 #ifdef ENABLE_ASCEND_API
         DELETE(INFINI_DEVICE_ASCEND, ascend)
-#endif
-#ifdef ENABLE_METAX_GPU
-    case DevMetaxGpu:
-        return macaDestroySwiGLUDescriptor((SwiGLUMacaDescriptor_t)desc);
 #endif
 #ifdef ENABLE_MTHREADS_GPU
     case DevMthreadsGpu:
