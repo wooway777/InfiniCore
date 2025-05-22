@@ -9,7 +9,7 @@ using namespace device::bang::kernel;
 /**
  * @brief Calculates optimal chunk size for memory operations based on tensor contiguity.
  *
- *        This function doesn't handle tensors with non-standard strides, which require
+ *        This function doesn't handle tensors with non-standard strides, which
  *        require more general optimizations not specific to Cambricon.
  *
  * @param global_idx_    Starting global index.
