@@ -19,6 +19,7 @@ def run_tests(args):
         "rope.py",
         "sub.py",
         "swiglu.py",
+        "attention.py",
     ]:
         result = subprocess.run(
             f"python {test} {args}", text=True, encoding="utf-8", shell=True
