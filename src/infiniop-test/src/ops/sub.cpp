@@ -75,24 +75,22 @@ std::shared_ptr<infiniop_test::Result> Test::run(
                 a->data(),
                 b->data(),
                 nullptr);
-            infiniopSub(
-                op_desc, workspace, workspace_size,
-                c->data(),
-                a->data(),
-                b->data(),
-                nullptr);
         },
-        (warm_ups + 1) / 2, (iterations + 1) / 2);
+        warm_ups, iterations);
 
     return TEST_PASSED(elapsed_time);
 }
 
 std::vector<std::string> Test::attribute_names() {
-    return {}; // No attributes needed now
+    return {};
 }
 
 std::vector<std::string> Test::tensor_names() {
     return {"a", "b", "c", "ans"};
+}
+
+std::vector<std::string> Test::output_names() {
+    return {"c"};
 }
 
 std::string Test::toString() const {
