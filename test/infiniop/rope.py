@@ -189,6 +189,9 @@ def test(
         )
 
     lib_rope()
+    
+    if sync is not None:
+        sync()
 
     atol, rtol = get_tolerance(_TOLERANCE_MAP, dtype)
     if DEBUG:
@@ -198,7 +201,7 @@ def test(
     if PROFILE:
         profile_operation(
             "PyTorch",
-            lambda: rotary_embedding(x, pos, theta, torch_device),
+            lambda: rotary_embedding(x, sin_table, cos_table, torch_device),
             torch_device,
             NUM_PRERUN,
             NUM_ITERATIONS,
