@@ -8,6 +8,9 @@
 #ifdef ENABLE_CUDA_API
 #include "cuda/random_sample_cuda.cuh"
 #endif
+#ifdef ENABLE_CAMBRICON_API
+#include "bang/random_sample_bang.h"
+#endif
 #ifdef ENABLE_METAX_API
 #include "maca/random_sample_maca.h"
 #endif
@@ -37,6 +40,9 @@ infiniopCreateRandomSampleDescriptor(
 #endif
 #ifdef ENABLE_CUDA_API
         CREATE(INFINI_DEVICE_NVIDIA, cuda);
+#endif
+#ifdef ENABLE_CAMBRICON_API
+        CREATE(INFINI_DEVICE_CAMBRICON, bang);
 #endif
 #ifdef ENABLE_METAX_API
         CREATE(INFINI_DEVICE_METAX, maca);
@@ -70,6 +76,9 @@ __C infiniStatus_t infiniopGetRandomSampleWorkspaceSize(
 #endif
 #ifdef ENABLE_CUDA_API
         GET(INFINI_DEVICE_NVIDIA, cuda);
+#endif
+#ifdef ENABLE_CAMBRICON_API
+        GET(INFINI_DEVICE_CAMBRICON, bang);
 #endif
 #ifdef ENABLE_METAX_API
         GET(INFINI_DEVICE_METAX, maca);
@@ -114,6 +123,9 @@ __C infiniStatus_t infiniopRandomSample(
 #ifdef ENABLE_CUDA_API
         CALCULATE(INFINI_DEVICE_NVIDIA, cuda);
 #endif
+#ifdef ENABLE_CAMBRICON_API
+        CALCULATE(INFINI_DEVICE_CAMBRICON, bang);
+#endif
 #ifdef ENABLE_METAX_API
         CALCULATE(INFINI_DEVICE_METAX, maca);
 #endif
@@ -143,6 +155,9 @@ __C infiniStatus_t infiniopDestroyRandomSampleDescriptor(
 #endif
 #ifdef ENABLE_CUDA_API
         DELETE(INFINI_DEVICE_NVIDIA, cuda);
+#endif
+#ifdef ENABLE_CAMBRICON_API
+        DELETE(INFINI_DEVICE_CAMBRICON, bang);
 #endif
 #ifdef ENABLE_METAX_API
         DELETE(INFINI_DEVICE_METAX, maca);
