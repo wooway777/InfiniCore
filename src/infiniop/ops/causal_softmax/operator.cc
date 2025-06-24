@@ -39,29 +39,12 @@ __C infiniStatus_t infiniopCreateCausalSoftmaxDescriptor(
 #ifdef ENABLE_CUDA_API
         CREATE(INFINI_DEVICE_NVIDIA, cuda)
 #endif
-<<<<<<< HEAD
 #ifdef ENABLE_CAMBRICON_API
         CREATE(INFINI_DEVICE_CAMBRICON, cnnl)
 #endif
 #ifdef ENABLE_METAX_API
         CREATE(INFINI_DEVICE_METAX, maca)
 #endif
-=======
-<<<<<<< HEAD
-#ifdef ENABLE_METAX_API
-        CREATE(INFINI_DEVICE_METAX, maca)
-#endif
-#ifdef ENABLE_CAMBRICON_MLU
-    case DevCambriconMlu: {
-        return bangCreateCausalSoftmaxDescriptor((BangHandle_t)handle, (CausalSoftmaxBangDescriptor_t *)desc_ptr, y_desc);
-        // return cnnlCreateCausalSoftmaxDescriptor((BangHandle_t) handle, (CausalSoftmaxCnnlDescriptor_t *) desc_ptr, y_desc);
-    }
-=======
-#ifdef ENABLE_CAMBRICON_API
-        CREATE(INFINI_DEVICE_CAMBRICON, cnnl)
->>>>>>> df0ecd4 (Added a cnnl causal softmax that does not support strides)
-#endif
->>>>>>> f7702ff (Added a cnnl causal softmax that does not support strides)
 #ifdef ENABLE_ASCEND_API
         CREATE(INFINI_DEVICE_ASCEND, ascend)
 #endif
@@ -97,11 +80,6 @@ __C infiniStatus_t infiniopGetCausalSoftmaxWorkspaceSize(infiniopCausalSoftmaxDe
 #ifdef ENABLE_METAX_API
         GET(INFINI_DEVICE_METAX, maca)
 #endif
-#ifdef ENABLE_METAX_GPU
-    case DevMetaxGpu: {
-        return macaGetCausalSoftmaxWorkspaceSize((CausalSoftmaxMacaDescriptor_t)desc, size);
-    }
-#endif
 #ifdef ENABLE_MTHREADS_GPU
     case DevMthreadsGpu: {
         return musaGetCausalSoftmaxWorkspaceSize((CausalSoftmaxMusaDescriptor_t)desc, size);
@@ -130,29 +108,12 @@ __C infiniStatus_t infiniopCausalSoftmax(
 #ifdef ENABLE_CUDA_API
         CALCULATE(INFINI_DEVICE_NVIDIA, cuda)
 #endif
-<<<<<<< HEAD
 #ifdef ENABLE_CAMBRICON_API
         CALCULATE(INFINI_DEVICE_CAMBRICON, cnnl)
 #endif
 #ifdef ENABLE_METAX_API
         CALCULATE(INFINI_DEVICE_METAX, maca)
 #endif
-=======
-<<<<<<< HEAD
-#ifdef ENABLE_METAX_API
-        CALCULATE(INFINI_DEVICE_METAX, maca)
-#endif
-#ifdef ENABLE_CAMBRICON_MLU
-    case DevCambriconMlu: {
-        return bangCausalSoftmax((CausalSoftmaxBangDescriptor_t)desc, workspace, workspace_size, data, stream);
-        // return cnnlCausalSoftmax((CausalSoftmaxCnnlDescriptor_t) desc, workspace, workspace_size, data, stream);
-    }
-=======
-#ifdef ENABLE_CAMBRICON_API
-        CALCULATE(INFINI_DEVICE_CAMBRICON, cnnl)
->>>>>>> df0ecd4 (Added a cnnl causal softmax that does not support strides)
-#endif
->>>>>>> f7702ff (Added a cnnl causal softmax that does not support strides)
 #ifdef ENABLE_ASCEND_API
         CALCULATE(INFINI_DEVICE_ASCEND, ascend)
 #endif
@@ -179,29 +140,12 @@ __C infiniStatus_t infiniopDestroyCausalSoftmaxDescriptor(infiniopCausalSoftmaxD
 #ifdef ENABLE_CUDA_API
         DESTROY(INFINI_DEVICE_NVIDIA, cuda)
 #endif
-<<<<<<< HEAD
 #ifdef ENABLE_CAMBRICON_API
         DESTROY(INFINI_DEVICE_CAMBRICON, cnnl)
 #endif
 #ifdef ENABLE_METAX_API
         DESTROY(INFINI_DEVICE_METAX, maca)
 #endif
-=======
-<<<<<<< HEAD
-#ifdef ENABLE_METAX_API
-        DESTROY(INFINI_DEVICE_METAX, maca)
-#endif
-#ifdef ENABLE_CAMBRICON_MLU
-    case DevCambriconMlu: {
-        return bangDestroyCausalSoftmaxDescriptor((CausalSoftmaxBangDescriptor_t)desc);
-        // return cnnlDestroyCausalSoftmaxDescriptor((CausalSoftmaxCnnlDescriptor_t) desc);
-    }
-=======
-#ifdef ENABLE_CAMBRICON_API
-        DESTROY(INFINI_DEVICE_CAMBRICON, cnnl)
->>>>>>> df0ecd4 (Added a cnnl causal softmax that does not support strides)
-#endif
->>>>>>> f7702ff (Added a cnnl causal softmax that does not support strides)
 #ifdef ENABLE_ASCEND_API
         DESTROY(INFINI_DEVICE_ASCEND, ascend)
 #endif
