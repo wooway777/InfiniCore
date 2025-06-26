@@ -6,110 +6,50 @@
 namespace op::rearrange::bang {
 
 struct Descriptor::Opaque {
-    infiniDtype_t dtype;
-    uint64_t ndim;
-    uint64_t dim_last, dim_2nd_last, dim_3rd_last;
-    int64_t dst_stride_2nd_last, dst_stride_3rd_last;
-    int64_t src_stride_2nd_last, src_stride_3rd_last;
+    utils::RearrangeMeta meta;
+    size_t element_size;
+    int *d_idx_strides;
+    int *d_dst_strides;
+    int *d_src_strides;
 };
 
 Descriptor::~Descriptor() {
-    delete _opaque;
-}
-
-const int SRC_MAX_SIZE = 1024 * 1024 * 128; // 128MB maximum transfer size
-
-__mlu_global__ void rearrange(
-    char *dst,
-    char const *src,
-    uint64_t ndim,
-    uint64_t dim_last, uint64_t dim_2nd_last, uint64_t dim_3rd_last,
-    int64_t dst_stride_2nd_last, int64_t dst_stride_3rd_last,
-    int64_t src_stride_2nd_last, int64_t src_stride_3rd_last,
-    int dtSize) {
-
-    const int maxNum = SRC_MAX_SIZE / dtSize;
-
-    int num_of_layers = dim_3rd_last * dim_2nd_last;
-    int remainT = num_of_layers % taskDim;
-    int stepEasy = (num_of_layers - remainT) / taskDim;
-    int stepHard = stepEasy + 1;
-    int step = (taskId < remainT ? stepHard : stepEasy);
-    int indStart = (taskId < remainT ? taskId * stepHard : remainT * stepHard + (taskId - remainT) * stepEasy);
-
-    if (dim_last < maxNum) {
-        for (int i = indStart; i < indStart + step; ++i) {
-            int tidS = 0;
-            int tidD = 0;
-            int indi = i;
-
-            tidS += (indi % dim_2nd_last) * src_stride_2nd_last;
-            tidD += (indi % dim_2nd_last) * dst_stride_2nd_last;
-            indi /= dim_2nd_last;
-
-            tidS += (indi % dim_3rd_last) * src_stride_3rd_last;
-            tidD += (indi % dim_3rd_last) * dst_stride_3rd_last;
-            indi /= dim_3rd_last;
-
-            __memcpy(dst + tidD * dtSize, src + tidS * dtSize, dim_last * dtSize, GDRAM2GDRAM);
-        }
-    } else {
-        int remain = dim_last % maxNum;
-        int repeat = (dim_last - remain) / maxNum;
-        for (int i = indStart; i < indStart + step; ++i) {
-            int tidS = 0;
-            int tidD = 0;
-            int indi = i;
-
-            tidS += (indi % dim_2nd_last) * src_stride_2nd_last;
-            tidD += (indi % dim_2nd_last) * dst_stride_2nd_last;
-            indi /= dim_2nd_last;
-
-            tidS += (indi % dim_3rd_last) * src_stride_3rd_last;
-            tidD += (indi % dim_3rd_last) * dst_stride_3rd_last;
-            indi /= dim_3rd_last;
-
-            for (int index = 0; index < repeat; index++) {
-                __memcpy(dst + (tidD + index * maxNum) * dtSize,
-                         src + (tidS + index * maxNum) * dtSize,
-                         maxNum * dtSize,
-                         GDRAM2GDRAM);
-            }
-            if (remain) {
-                __memcpy(dst + (tidD + repeat * maxNum) * dtSize,
-                         src + (tidS + repeat * maxNum) * dtSize,
-                         remain * dtSize,
-                         GDRAM2GDRAM);
-            }
-        }
+    if (_opaque) {
+        cnrtFree(_opaque->d_idx_strides);
+        cnrtFree(_opaque->d_dst_strides);
+        cnrtFree(_opaque->d_src_strides);
+        delete _opaque;
     }
 }
 
-void rearrangeUnion(cnrtQueue_t queue, void *destination, void const *source,
-                    uint64_t ndim,
-                    uint64_t dim_last, uint64_t dim_2nd_last, uint64_t dim_3rd_last,
-                    int64_t dst_stride_2nd_last, int64_t dst_stride_3rd_last,
-                    int64_t src_stride_2nd_last, int64_t src_stride_3rd_last,
-                    int dtSize) {
+__mlu_global__ void rearrange(
+    char *dst,
+    const char *src,
+    const int *idx_strides,
+    const int *dst_strides,
+    const int *src_strides,
+    int ndim,
+    int count,
+    int unit_size) {
 
-    auto dst = reinterpret_cast<char *>(destination);
-    auto src = reinterpret_cast<const char *>(source);
+    const int task_size = (count + taskDim - 1) / taskDim;
+    const int start = taskId * task_size;
+    const int end = (start + task_size) < count ? (start + task_size) : count;
 
-    cnrtDim3_t k_dim;
-    cnrtFunctionType_t k_type;
+    for (int i = start; i < end; ++i) {
+        int rem = i;
+        int dst_offset = 0;
+        int src_offset = 0;
 
-    k_dim.x = 4; // Using 4 clusters
-    k_dim.y = 1;
-    k_dim.z = 1;
-    k_type = CNRT_FUNC_TYPE_UNION1;
+        for (int j = 0; j < ndim; ++j) {
+            const int k = rem / idx_strides[j];
+            dst_offset += k * dst_strides[j];
+            src_offset += k * src_strides[j];
+            rem %= idx_strides[j];
+        }
 
-    rearrange<<<k_dim, k_type, queue>>>(dst, src, ndim,
-                                        dim_last, dim_2nd_last, dim_3rd_last,
-                                        dst_stride_2nd_last, dst_stride_3rd_last,
-                                        src_stride_2nd_last, src_stride_3rd_last,
-                                        dtSize);
-
-    cnrtQueueSync(queue);
+        __memcpy(dst + dst_offset, src + src_offset, unit_size, GDRAM2GDRAM);
+    }
 }
 
 infiniStatus_t Descriptor::create(
@@ -129,59 +69,63 @@ infiniStatus_t Descriptor::create(
     CHECK_OR_RETURN(x_desc->ndim() == ndim, INFINI_STATUS_BAD_TENSOR_SHAPE);
     CHECK_SAME_SHAPE(x_shape, y_shape);
 
-    // Get strides and validate last dimension stride
+    // Get strides and element size
     auto dst_strides = y_desc->strides();
     auto src_strides = x_desc->strides();
-    CHECK_OR_RETURN(dst_strides[ndim - 1] == 1 && src_strides[ndim - 1] == 1,
-                    INFINI_STATUS_BAD_TENSOR_STRIDES);
+    auto element_size = infiniSizeOf(dtype);
 
-    // Create descriptor based on number of dimensions
-    auto opaque = new Opaque{
-        dtype,
-        ndim,
-        0, 0, 0,
-        0, 0,
-        0, 0};
-
-    switch (ndim) {
-    case 1:
-        opaque->dim_last = y_shape[0];
-        opaque->dim_2nd_last = 1;
-        opaque->dim_3rd_last = 1;
-        break;
-    case 2:
-        opaque->dim_last = y_shape[1];
-        opaque->dim_2nd_last = y_shape[0];
-        opaque->dim_3rd_last = 1;
-        opaque->dst_stride_2nd_last = dst_strides[0];
-        opaque->src_stride_2nd_last = src_strides[0];
-        break;
-    case 3:
-        opaque->dim_last = y_shape[2];
-        opaque->dim_2nd_last = y_shape[1];
-        opaque->dim_3rd_last = y_shape[0];
-        opaque->dst_stride_2nd_last = dst_strides[1];
-        opaque->dst_stride_3rd_last = dst_strides[0];
-        opaque->src_stride_2nd_last = src_strides[1];
-        opaque->src_stride_3rd_last = src_strides[0];
-        break;
-    default:
-        delete opaque;
-        return INFINI_STATUS_BAD_TENSOR_STRIDES;
-    }
-
-    // Create a valid RearrangeMeta using the create method
+    // Create rearrange meta
     auto meta_result = utils::RearrangeMeta::create(
         y_shape.data(),
         dst_strides.data(),
         src_strides.data(),
         ndim,
-        infiniSizeOf(dtype));
+        element_size);
 
-    if (!meta_result) {
-        delete opaque;
-        return INFINI_STATUS_BAD_TENSOR_STRIDES;
+    CHECK_RESULT(meta_result);
+
+    // Convert stride arrays to 32-bit
+    std::vector<int> idx_strides(meta_result->ndim());
+    std::vector<int> dst_strides_32(meta_result->ndim());
+    std::vector<int> src_strides_32(meta_result->ndim());
+
+    for (size_t i = 0; i < meta_result->ndim(); ++i) {
+        idx_strides[i] = static_cast<int>(meta_result->idx_strides()[i]);
+        dst_strides_32[i] = static_cast<int>(meta_result->dst_strides()[i]);
+        src_strides_32[i] = static_cast<int>(meta_result->src_strides()[i]);
     }
+
+    // Allocate device memory for strides
+    int *d_idx_strides, *d_dst_strides, *d_src_strides;
+    cnrtRet_t ret;
+    ret = cnrtMalloc((void **)&d_idx_strides, idx_strides.size() * sizeof(int));
+    CHECK_OR_RETURN(ret == cnrtSuccess, INFINI_STATUS_INTERNAL_ERROR);
+    ret = cnrtMalloc((void **)&d_dst_strides, dst_strides_32.size() * sizeof(int));
+    CHECK_OR_RETURN(ret == cnrtSuccess, INFINI_STATUS_INTERNAL_ERROR);
+    ret = cnrtMalloc((void **)&d_src_strides, src_strides_32.size() * sizeof(int));
+    CHECK_OR_RETURN(ret == cnrtSuccess, INFINI_STATUS_INTERNAL_ERROR);
+
+    // Create queue for async operations
+    cnrtQueue_t queue;
+    cnrtQueueCreate(&queue);
+
+    // Copy stride data to device
+    cnrtMemcpyAsync(d_idx_strides, idx_strides.data(),
+                    idx_strides.size() * sizeof(int), queue, cnrtMemcpyHostToDev);
+    cnrtMemcpyAsync(d_dst_strides, dst_strides_32.data(),
+                    dst_strides_32.size() * sizeof(int), queue, cnrtMemcpyHostToDev);
+    cnrtMemcpyAsync(d_src_strides, src_strides_32.data(),
+                    src_strides_32.size() * sizeof(int), queue, cnrtMemcpyHostToDev);
+    cnrtQueueSync(queue);
+    cnrtQueueDestroy(queue);
+
+    // Create opaque data
+    auto opaque = new Opaque{
+        meta_result.take(),
+        element_size,
+        d_idx_strides,
+        d_dst_strides,
+        d_src_strides};
 
     *desc_ptr = new Descriptor(
         meta_result.take(),
@@ -197,19 +141,31 @@ infiniStatus_t Descriptor::calculate(
     const void *x,
     void *stream) const {
 
-    if (cnrtSetDevice(device_id) != cnrtSuccess) { // Changed to device_id from base class
-        return INFINI_STATUS_DEVICE_TYPE_NOT_SUPPORTED;
-    }
-
     cnrtQueue_t queue = reinterpret_cast<cnrtQueue_t>(stream);
+    auto &meta = _opaque->meta;
 
-    rearrangeUnion(queue, y, x,
-                   _opaque->ndim,
-                   _opaque->dim_last, _opaque->dim_2nd_last, _opaque->dim_3rd_last,
-                   _opaque->dst_stride_2nd_last, _opaque->dst_stride_3rd_last,
-                   _opaque->src_stride_2nd_last, _opaque->src_stride_3rd_last,
-                   infiniSizeOf(_opaque->dtype));
+    // Configure kernel launch parameters
+    cnrtDim3_t dim;
+    cnrtFunctionType_t func_type;
 
+    // Use union mode for better parallelism
+    dim.x = 4; // Using 4 clusters
+    dim.y = 1;
+    dim.z = 1;
+    func_type = CNRT_FUNC_TYPE_UNION1;
+
+    // Launch kernel
+    rearrange<<<dim, func_type, queue>>>(
+        reinterpret_cast<char *>(y),
+        reinterpret_cast<const char *>(x),
+        _opaque->d_idx_strides,
+        _opaque->d_dst_strides,
+        _opaque->d_src_strides,
+        static_cast<int>(meta.ndim()),
+        static_cast<int>(meta.count()),
+        static_cast<int>(meta.unit()));
+
+    cnrtQueueSync(queue);
     return INFINI_STATUS_SUCCESS;
 }
 
