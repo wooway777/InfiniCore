@@ -14,12 +14,6 @@ public:
             __bang_active_sigmoid(out, gate, num_elements);
             __bang_mul(out, out, gate, num_elements);
             __bang_mul(out, out, up, num_elements);
-        } else if constexpr (std::is_same_v<T, float>) {
-            __bang_neg(out, gate, num_elements);
-            __bang_active_exphp(out, out, num_elements);
-            __bang_add_scalar(out, out, 1.0f, num_elements);
-            __bang_div(out, gate, out, num_elements);
-            __bang_mul(out, up, out, num_elements);
         } else {
             for (size_t i = 0; i < num_elements; ++i) {
                 out[i] = up[i] * gate[i] / (1.0 + std::exp(-gate[i]));
