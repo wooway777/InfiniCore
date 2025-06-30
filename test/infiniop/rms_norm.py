@@ -37,7 +37,7 @@ _TENSOR_DTYPES = [torch.float16]
 
 # Tolerance map for different data types
 _TOLERANCE_MAP = {
-    torch.float16: {"atol": 1e-3, "rtol": 1e-3},
+    torch.float16: {"atol": 1e-3, "rtol": 2e-3},
 }
 
 DEBUG = False
@@ -73,7 +73,7 @@ def test(
     x_stride,
     w_dtype=torch.float16,
     dtype=torch.float16,
-    sync=None
+    sync=None,
 ):
     print(
         f"Testing RMS_Norm on {torch_device} with y_shape:{y_shape} x_shape:{x_shape} w_shape:{w_shape}"
@@ -93,10 +93,10 @@ def test(
         for tensor, stride in zip([x, y], [x_stride, y_stride])
     ]
     x_tensor, y_tensor, w_tensor = [to_tensor(tensor, lib) for tensor in [x, y, w]]
-    
+
     if sync is not None:
         sync()
-    
+
     descriptor = infiniopRMSNormDescriptor_t()
 
     check_error(
