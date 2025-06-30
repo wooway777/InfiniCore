@@ -7,59 +7,6 @@
 using namespace device::bang::kernel;
 
 /**
- * @brief Calculates optimal chunk size for memory operations based on tensor contiguity.
- *
- *        This function doesn't handle tensors with non-standard strides, which
- *        require more general optimizations not specific to Cambricon.
- *
- * @param global_idx_    Starting global index.
- * @param ndim           Number of dimensions.
- * @param shape          Tensor shape.
- * @param strides        Tensor strides.
- * @param max_len        Maximum allowed chunk size.
- * @return size_t        Optimal chunk size for memory operations.
- */
-__mlu_device__ size_t calculateChunkSize(
-    size_t global_idx_,
-    size_t ndim,
-    const size_t *shape,
-    const ptrdiff_t *strides,
-    size_t max_len) {
-    // Find the last dimension that is contiguous
-    int last_contiguous_dim = -1;
-    ptrdiff_t expected_stride = 1;
-
-    for (int i = (int)ndim - 1; i >= 0; --i) {
-        if (strides[i] != expected_stride) {
-            break;
-        }
-        last_contiguous_dim = i;
-        if (i > 0) {
-            expected_stride *= shape[i];
-        }
-    }
-
-    if (last_contiguous_dim < 0) {
-        return 1;
-    }
-
-    // Calculate position in the contiguous block
-    size_t global_idx = global_idx_;
-    size_t pos_in_block = 0;
-    size_t block_size = 1;
-
-    for (int i = (int)ndim - 1; i >= last_contiguous_dim; --i) {
-        size_t dim_idx = global_idx % shape[i];
-        pos_in_block += dim_idx * block_size;
-        block_size *= shape[i];
-        global_idx /= shape[i];
-    }
-
-    size_t remaining_in_block = block_size - pos_in_block;
-    return std::min(max_len, remaining_in_block);
-}
-
-/**
  * @brief Core elementwise operation implementation for BANG device.
  *
  * @tparam N                Number of input tensors.
