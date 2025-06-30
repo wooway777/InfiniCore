@@ -5,7 +5,6 @@
 
 namespace op::common_bang::reduce_op {
 
-<<<<<<< HEAD
 constexpr int batch_size = 128 / sizeof(float);
 
 __mlu_func__ void sumInternal(float *dst, float *src, int max_batch) {
@@ -27,21 +26,6 @@ __mlu_func__ void sumInternal(float *dst, float *src, int max_batch) {
         }
         dst[0] = sum;
     }
-=======
-__mlu_func__ void sumInternal(float *dst, float *src, int max_batch) {
-    constexpr int batch_size = 128 / sizeof(float);
-    __bang_sumpool(
-        dst, src,
-        batch_size,             // channel size
-        1,                      // height
-        max_batch / batch_size, // width
-        1,                      // kernel_height
-        max_batch / batch_size, // kernel_width
-        1,                      // stride_height
-        1                       // stride_width
-    );
-    __bang_reduce_sum(dst, dst, batch_size);
->>>>>>> 2d0c699 (issue/240 - Cambricon Reduce - RMS Norm)
 }
 
 template <typename T>
@@ -80,7 +64,6 @@ __mlu_func__ float sum(const T *source, T *src, float *dst, int num_elements, in
 }
 
 template <typename T>
-<<<<<<< HEAD
 __mlu_func__ float sumBatched(const T *source, T *src, float *dst, int num_elements, int max_batch) {
     constexpr int min_vector_size = 32;
     // constexpr int batch_size = 128 / sizeof(float);
@@ -145,8 +128,6 @@ __mlu_func__ float sumBatched(const T *source, T *src, float *dst, int num_eleme
 }
 
 template <typename T>
-=======
->>>>>>> 2d0c699 (issue/240 - Cambricon Reduce - RMS Norm)
 __mlu_func__ float sumSquared(const T *source, T *src, float *dst, int num_elements, int max_batch) {
     float res = 0.0f;
     int offset = (sizeof(T) == 2 ? max_batch : 0);
@@ -187,11 +168,7 @@ __mlu_func__ float sumSquared(const T *source, T *src, float *dst, int num_eleme
 template <typename T>
 __mlu_func__ float sumSquaredBatched(const T *source, T *src, float *dst, int num_elements, int max_batch) {
     constexpr int min_vector_size = 32; // Minimum vector size threshold
-<<<<<<< HEAD
     // constexpr int batch_size = 128 / sizeof(float);
-=======
-    constexpr int batch_size = 128 / sizeof(float);
->>>>>>> 2d0c699 (issue/240 - Cambricon Reduce - RMS Norm)
 
     // For small vectors, use safer element-wise computation
     if (num_elements < min_vector_size) {
@@ -280,7 +257,6 @@ __mlu_func__ float sumSquaredBatched(const T *source, T *src, float *dst, int nu
     return res;
 }
 
-<<<<<<< HEAD
 __mlu_func__ void maxInternal(float *dst, float *src, int max_batch) {
     // constexpr int batch_size = 128 / sizeof(float);
     __bang_maxpool(
@@ -358,16 +334,6 @@ __mlu_func__ float maxBatched(const T *source, T *src, float *dst, int num_eleme
     }
 
     return max_val;
-=======
-template <typename T>
-__mlu_entry__ void max_kernel(T *result, const T *data, size_t len) {
-    *result = data[0];
-    for (size_t i = 1; i < len; i++) {
-        if (data[i] > *result) {
-            *result = data[i];
-        }
-    }
->>>>>>> 2d0c699 (issue/240 - Cambricon Reduce - RMS Norm)
 }
 
 } // namespace op::common_bang::reduce_op
