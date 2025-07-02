@@ -116,19 +116,21 @@ getOutputIndex(size_t idx,
                const size_t *shape,
                const ptrdiff_t *strides) {
     return is_contiguous ? idx : indexToOffset(idx, ndim, shape, strides);
-} /**
-   * @brief Calculates optimal chunk size for memory operations based on tensor contiguity.
-   *
-   *        This function doesn't handle tensors with non-standard strides, which
-   *        require more general optimizations not specific to Cambricon.
-   *
-   * @param global_idx_    Starting global index.
-   * @param ndim           Number of dimensions.
-   * @param shape          Tensor shape.
-   * @param strides        Tensor strides.
-   * @param max_len        Maximum allowed chunk size.
-   * @return size_t        Optimal chunk size for memory operations.
-   */
+}
+
+/**
+ * @brief Calculates optimal chunk size for memory operations based on tensor contiguity.
+ *
+ *        This function doesn't handle tensors with non-standard strides, which
+ *        require more general optimizations not specific to Cambricon.
+ *
+ * @param global_idx_    Starting global index.
+ * @param ndim           Number of dimensions.
+ * @param shape          Tensor shape.
+ * @param strides        Tensor strides.
+ * @param max_len        Maximum allowed chunk size.
+ * @return size_t        Optimal chunk size for memory operations.
+ */
 __mlu_device__ size_t calculateChunkSize(
     size_t global_idx_,
     size_t ndim,
@@ -139,9 +141,10 @@ __mlu_device__ size_t calculateChunkSize(
     int last_contiguous_dim = -1;
     ptrdiff_t expected_stride = 1;
 
+    // Check dimensions from highest to lowest
     for (int i = (int)ndim - 1; i >= 0; --i) {
         if (strides[i] != expected_stride) {
-            break;
+            break; // Stride doesn't match expected for contiguous layout
         }
         last_contiguous_dim = i;
         if (i > 0) {
@@ -149,6 +152,7 @@ __mlu_device__ size_t calculateChunkSize(
         }
     }
 
+    // If no contiguous dimension found, process one element at a time
     if (last_contiguous_dim < 0) {
         return 1;
     }
@@ -165,25 +169,83 @@ __mlu_device__ size_t calculateChunkSize(
         global_idx /= shape[i];
     }
 
+    // Calculate remaining elements in this contiguous block
     size_t remaining_in_block = block_size - pos_in_block;
     return std::min(max_len, remaining_in_block);
 }
 
 /**
- * @brief Helper function for non-contiguous memory copy
+ * @brief Checks if a memory segment is contiguous.
  *
- * @param dst Destination buffer
- * @param src Source buffer
- * @param direction Memory copy direction (GDRAM2NRAM or NRAM2GDRAM)
- * @param indexer Input indexer helper (for input copies)
- * @param input_idx Input tensor index (for input copies)
- * @param processed Number of elements already processed
- * @param curr_batch Current batch size
- * @param start_idx Starting index for this task
- * @param ndim Number of dimensions
- * @param shape Tensor shape
- * @param strides Tensor strides
- * @param is_input_copy Whether this is an input copy operation
+ * @param start_idx     Starting index of the segment.
+ * @param count         Number of elements in the segment.
+ * @param ndim          Number of dimensions.
+ * @param shape         Tensor shape.
+ * @param strides       Tensor strides.
+ * @return bool         True if the segment is contiguous in memory.
+ */
+__mlu_device__ bool isContiguous(
+    size_t start_idx,
+    size_t count,
+    size_t ndim,
+    const size_t *shape,
+    const ptrdiff_t *strides) {
+
+    if (count <= 1) {
+        return true;
+    }
+
+    // Verify the tensor follows contiguous memory layout
+    ptrdiff_t expected_stride = 1;
+    for (int i = ndim - 1; i >= 0; --i) {
+        if (strides[i] != expected_stride) {
+            return false;
+        }
+        expected_stride *= shape[i];
+    }
+
+    // Check if the segment is contiguous within this layout
+    size_t end_idx = start_idx + count - 1;
+    size_t linear_start = 0;
+    size_t linear_end = 0;
+    size_t temp_start = start_idx;
+    size_t temp_end = end_idx;
+
+    for (int i = 0; i < ndim; ++i) {
+        size_t dim_size = shape[i];
+        size_t start_coord = temp_start % dim_size;
+        size_t end_coord = temp_end % dim_size;
+        linear_start += start_coord * strides[i];
+        linear_end += end_coord * strides[i];
+        temp_start /= dim_size;
+        temp_end /= dim_size;
+    }
+
+    // The segment is contiguous if the difference matches count-1 elements
+    return (linear_end - linear_start) == (count - 1) * strides[ndim - 1];
+}
+
+/**
+ * @brief Helper function for non-contiguous memory copy operations.
+ *
+ * This function handles copying data between NRAM (on-chip memory) and GDRAM
+ * (global memory) for tensors with non-contiguous memory layouts. It uses
+ * various strategies (single element copy, contiguous block copy, strided copy)
+ * depending on the memory layout.
+ *
+ * @tparam Tdata        Data type of the elements.
+ * @param dst           Destination buffer.
+ * @param src           Source buffer.
+ * @param direction     Memory copy direction (GDRAM2NRAM or NRAM2GDRAM).
+ * @param indexer       Input indexer helper (for input copies).
+ * @param input_idx     Input tensor index (for input copies).
+ * @param processed     Number of elements already processed.
+ * @param curr_batch    Current batch size.
+ * @param start_idx     Starting index for this task.
+ * @param ndim          Number of dimensions.
+ * @param shape         Tensor shape.
+ * @param strides       Tensor strides.
+ * @param is_input_copy Whether this is an input copy operation.
  */
 template <typename Tdata>
 __mlu_device__ void nonContiguousMemcpy(
@@ -204,20 +266,63 @@ __mlu_device__ void nonContiguousMemcpy(
     size_t current_pos = 0;
 
     while (remaining > 0) {
-        size_t element_offset = is_input_copy ? indexer(input_idx, processed + current_pos) : getOutputIndex(start_idx + processed + current_pos,
-                                                                                                             false, // output_contiguous is false for non-contiguous
-                                                                                                             ndim, shape, strides);
+        // Calculate current position in the tensor
+        size_t global_idx = start_idx + processed + current_pos;
 
-        size_t chunk_size = calculateChunkSize(start_idx + processed + current_pos,
-                                               ndim,
-                                               shape,
-                                               strides,
-                                               remaining);
+        // Get the element offset (either input or output)
+        size_t element_offset = is_input_copy ? indexer(input_idx, processed + current_pos) : getOutputIndex(global_idx, false, ndim, shape, strides);
 
-        __memcpy_async(dst + (is_input_copy ? current_pos : element_offset),
-                       src + (is_input_copy ? element_offset : current_pos),
-                       chunk_size * sizeof(Tdata),
-                       direction);
+        // Calculate optimal chunk size for this segment
+        size_t chunk_size = calculateChunkSize(
+            global_idx, ndim, shape, strides, remaining);
+
+        // Calculate strides in bytes
+        ptrdiff_t src_stride_bytes = 0;
+        ptrdiff_t dst_stride_bytes = 0;
+        size_t segnum = 0;
+
+        if (chunk_size > 1) {
+            // For contiguous segments, use regular copy
+            if (isContiguous(global_idx, chunk_size, ndim, shape, strides)) {
+                __memcpy_async(
+                    dst + (is_input_copy ? current_pos : element_offset),
+                    src + (is_input_copy ? element_offset : current_pos),
+                    chunk_size * sizeof(Tdata),
+                    direction);
+            }
+            // For strided segments, use 2D memcpy
+            else {
+                // Calculate next element's offset to determine stride
+                size_t next_offset = is_input_copy ? indexer(input_idx, processed + current_pos + 1) : getOutputIndex(global_idx + 1, false, ndim, shape, strides);
+
+                if (is_input_copy) {
+                    src_stride_bytes = (next_offset - element_offset) * sizeof(Tdata);
+                    dst_stride_bytes = sizeof(Tdata); // NRAM is contiguous
+                } else {
+                    src_stride_bytes = sizeof(Tdata); // NRAM is contiguous
+                    dst_stride_bytes = (next_offset - element_offset) * sizeof(Tdata);
+                }
+
+                // Number of segments is chunk_size - 1
+                segnum = chunk_size - 1;
+
+                __memcpy_async(
+                    dst + (is_input_copy ? current_pos : element_offset),
+                    src + (is_input_copy ? element_offset : current_pos),
+                    sizeof(Tdata), // Size of each segment
+                    direction,
+                    dst_stride_bytes,
+                    src_stride_bytes,
+                    segnum);
+            }
+        } else {
+            // Single element copy
+            __memcpy_async(
+                dst + (is_input_copy ? current_pos : element_offset),
+                src + (is_input_copy ? element_offset : current_pos),
+                sizeof(Tdata),
+                direction);
+        }
 
         current_pos += chunk_size;
         remaining -= chunk_size;
