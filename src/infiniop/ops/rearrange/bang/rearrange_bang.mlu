@@ -152,7 +152,7 @@ infiniStatus_t Descriptor::calculate(
     dim.x = 4; // Using 4 clusters
     dim.y = 1;
     dim.z = 1;
-    func_type = CNRT_FUNC_TYPE_UNION1;
+    func_type = cnrtFuncTypeUnion1;
 
     // Launch kernel
     rearrange<<<dim, func_type, queue>>>(
