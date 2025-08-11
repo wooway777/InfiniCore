@@ -83,9 +83,6 @@ struct DeviceImpl::Opaque {
             internal,
             args...);
 
-        // Synchronize queue to ensure completion
-        CNRT_CHECK(cnrtQueueSync(queue));
-
         return INFINI_STATUS_SUCCESS;
     }
 

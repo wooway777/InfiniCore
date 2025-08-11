@@ -59,8 +59,6 @@ infiniStatus_t calculateRoPE(const RoPEInfo &info,
         info.y_stride_seqlen, info.y_stride_nhead,
         info.x_stride_seqlen, info.x_stride_nhead);
 
-    cnrtQueueSync(queue);
-
     return INFINI_STATUS_SUCCESS;
 }
 
